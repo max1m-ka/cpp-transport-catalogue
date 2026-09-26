@@ -4,7 +4,9 @@
 #include <string>
 #include <vector>
 #include <cstddef>
+#include <utility>
 #include <optional>
+#include <functional>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
@@ -26,7 +28,15 @@ struct Bus {
 struct BusInfo {
     size_t stops_count;
     size_t unique_stops_count;
-    double route_length;
+    int route_length;
+    double curvature;
+};
+
+struct Hasher {
+    size_t operator() (const std::pair<const Stop*, const Stop*>& p) const {
+        std::hash<const void*> hash;
+        return hash(p.first) + hash(p.second) * 37;
+    }
 };
 
 class TransportCatalogue {
@@ -39,15 +49,19 @@ public:
     
     std::optional<BusInfo> GetBusInfo(std::string_view name) const;
     std::unordered_set<std::string_view> GetBusesByStop(std::string_view stop_name) const;
+
+    int GetDistance(const Stop* from, const Stop* to) const;
+    void SetDistance(const Stop*, const Stop*, int distance);
     
 private:
     std::deque<Bus> buses_;
     std::deque<Stop> stops_;
-    
+
     std::unordered_map<std::string_view, const Bus*> busname_to_bus_;
     std::unordered_map<std::string_view, const Stop*> stopname_to_stop_;
     
     std::unordered_map<const Stop*, std::unordered_set<std::string_view>>  stop_to_buses_;
     
+    std::unordered_map<std::pair<const Stop*, const Stop*>, int, Hasher> distance_to_stop_;
 };
 }

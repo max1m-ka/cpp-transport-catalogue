@@ -1,8 +1,9 @@
 #include "input_reader.h"
 
-#include <algorithm>
-#include <cassert>
+#include <cmath>
 #include <iterator>
+#include <string>
+#include <utility>
 
 namespace input_reader {
 
@@ -97,6 +98,27 @@ CommandDescription ParseCommandDescription(std::string_view line) {
         std::string(line.substr(colon_pos + 1))};
 }
 
+std::pair<int, std::string_view> ParseDistance(std::string_view str) {
+    str = Trim(str);
+
+    const auto it = str.find('m');
+    const int distance = std::stoi(std::string(str.substr(0, it)));
+    const std::string_view stop_name = Trim(str.substr(it + 5));
+
+    return {distance, stop_name};
+}
+
+std::string_view GetDistanceDescriptions(std::string_view description) {
+    const auto first_comma = description.find(',');
+    const auto second_comma = description.find(',', first_comma + 1);
+
+    if (second_comma == description.npos) {
+        return {};
+    }
+
+    return description.substr(second_comma + 1);
+}
+
 void InputReader::ParseLine(std::string_view line) {
     auto command_description = ParseCommandDescription(line);
     if (command_description) {
@@ -108,6 +130,21 @@ void InputReader::ApplyCommands([[maybe_unused]] transport_catalogue::TransportC
     for (const CommandDescription& command : commands_) {
         if (command.command == "Stop") {
             catalogue.AddStop(command.id, ParseCoordinates(command.description));
+        }
+    }
+
+    for (const CommandDescription& command : commands_) {
+        if (command.command != "Stop") {
+            continue;
+        }
+
+        const auto* from = catalogue.FindStop(command.id);
+        const std::string_view descriptions = GetDistanceDescriptions(command.description);
+
+        for (std::string_view part : Split(descriptions, ',')) {
+            const auto [distance, stop_name] = ParseDistance(part);
+            const auto* to = catalogue.FindStop(stop_name);
+            catalogue.SetDistance(from, to, distance);
         }
     }
     

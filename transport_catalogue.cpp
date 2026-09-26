@@ -1,5 +1,6 @@
 #include "transport_catalogue.h"
 
+#include <limits>
 #include <utility>
 
 using namespace std;
@@ -52,7 +53,7 @@ const Bus* TransportCatalogue::FindBus(string_view name) const {
     return it->second;
 }
 
-optional<BusInfo> TransportCatalogue::GetBusInfo(string_view name) const {
+std::optional<BusInfo> TransportCatalogue::GetBusInfo(string_view name) const {
     const Bus* bus = FindBus(name);
     
     if (bus == nullptr) {
@@ -61,18 +62,31 @@ optional<BusInfo> TransportCatalogue::GetBusInfo(string_view name) const {
     
     std::unordered_set<const Stop*> unique_stops(bus->stops.begin(), bus->stops.end());
     
-    double route_length = 0.0;
+    int route_length = 0;
+    double geographic_length = 0.0;
     
     for (size_t i = 1; i < bus->stops.size(); ++i) {
-        route_length += geo::ComputeDistance(bus->stops[i - 1]->coordinates, bus->stops[i]->coordinates);
+        const Stop* from = bus->stops[i - 1];
+        const Stop* to = bus->stops[i];
+
+        route_length += GetDistance(from, to);
+        geographic_length += geo::ComputeDistance(from->coordinates, to->coordinates);
+    }
+
+    double curvature = 0.0;
+    if (geographic_length > 0.0) {
+        curvature = static_cast<double>(route_length) / geographic_length;
+    } else if (route_length > 0) {
+        curvature = std::numeric_limits<double>::infinity();
     }
     
     return BusInfo{bus->stops.size(),
         unique_stops.size(),
-        route_length};
+        route_length,
+        curvature};
 }
 
-std::unordered_set<std::string_view> TransportCatalogue::GetBusesByStop(std::string_view stop_name) const{
+std::unordered_set<std::string_view> TransportCatalogue::GetBusesByStop(std::string_view stop_name) const {
     const Stop* stop = FindStop(stop_name);
     
     if (stop == nullptr) {
@@ -85,5 +99,17 @@ std::unordered_set<std::string_view> TransportCatalogue::GetBusesByStop(std::str
     }
     
     return it->second;
+}
+
+int TransportCatalogue::GetDistance(const Stop* from, const Stop* to) const {
+    auto it = distance_to_stop_.find(std::make_pair(from, to));
+    if (it == distance_to_stop_.end()) {
+        it = distance_to_stop_.find(std::make_pair(to, from));
+    }
+    return it->second;
+}
+
+void TransportCatalogue::SetDistance(const Stop* from, const Stop* to, int distance) {
+    distance_to_stop_[std::make_pair(from, to)] = distance;
 }
 }
