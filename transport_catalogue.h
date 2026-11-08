@@ -32,13 +32,6 @@ struct BusInfo {
     double curvature;
 };
 
-struct Hasher {
-    size_t operator() (const std::pair<const Stop*, const Stop*>& p) const {
-        std::hash<const void*> hash;
-        return hash(p.first) + hash(p.second) * 37;
-    }
-};
-
 class TransportCatalogue {
 public:
     void AddStop(const std::string& name, geo::Coordinates coordinates);
@@ -54,6 +47,13 @@ public:
     void SetDistance(const Stop*, const Stop*, int distance);
     
 private:
+    struct Hasher {
+        size_t operator() (const std::pair<const Stop*, const Stop*>& p) const {
+            std::hash<const void*> hash;
+            return hash(p.first) + hash(p.second) * 37;
+        }
+    };
+
     std::deque<Bus> buses_;
     std::deque<Stop> stops_;
 
@@ -63,5 +63,6 @@ private:
     std::unordered_map<const Stop*, std::unordered_set<std::string_view>>  stop_to_buses_;
     
     std::unordered_map<std::pair<const Stop*, const Stop*>, int, Hasher> distance_to_stop_;
+};
 };
 }
