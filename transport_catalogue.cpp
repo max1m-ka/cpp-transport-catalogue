@@ -103,13 +103,26 @@ std::unordered_set<std::string_view> TransportCatalogue::GetBusesByStop(std::str
 
 int TransportCatalogue::GetDistance(const Stop* from, const Stop* to) const {
     auto it = distance_to_stop_.find(std::make_pair(from, to));
+    
     if (it == distance_to_stop_.end()) {
         it = distance_to_stop_.find(std::make_pair(to, from));
     }
+    if (it == distance_to_stop_.end()) {
+        return 0;
+    }
+    
     return it->second;
 }
 
 void TransportCatalogue::SetDistance(const Stop* from, const Stop* to, int distance) {
+    if (from == nullptr || to == nullptr) {
+        return;
+    }
+
+    if (FindStop(from->name) != from || FindStop(to->name) != to) {
+        return;
+    }
+
     distance_to_stop_[std::make_pair(from, to)] = distance;
 }
 }
