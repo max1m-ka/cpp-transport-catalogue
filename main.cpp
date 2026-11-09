@@ -1,32 +1,39 @@
+#include "json.h"
+#include "json_reader.h"
+#include "map_renderer.h"
+#include "request_handler.h"
+#include "transport_catalogue.h"
+
 #include <iostream>
-#include <string>
-
-#include "input_reader.h"
-#include "stat_reader.h"
-
-using namespace std;
+#include <utility>
 
 int main() {
+    const json::Document input = json::Load(std::cin);
+    const json::Dict& root = input.GetRoot().AsMap();
+
     transport_catalogue::TransportCatalogue catalogue;
 
-    int base_request_count;
-    cin >> base_request_count >> ws;
+    json_reader::LoadBaseRequests(
+        root.at("base_requests").AsArray(),
+        catalogue
+    );
 
-    {
-        input_reader::InputReader reader;
-        for (int i = 0; i < base_request_count; ++i) {
-            string line;
-            getline(cin, line);
-            reader.ParseLine(line);
-        }
-        reader.ApplyCommands(catalogue);
-    }
+    renderer::MapRenderer map_renderer(
+        json_reader::ParseRenderSettings(
+            root.at("render_settings").AsMap()
+        )
+    );
 
-    int stat_request_count;
-    cin >> stat_request_count >> ws;
-    for (int i = 0; i < stat_request_count; ++i) {
-        string line;
-        getline(cin, line);
-        stat_reader::ParseAndPrintStat(catalogue, line, cout);
-    }
+    RequestHandler handler(catalogue, map_renderer);
+
+    json::Array answers = json_reader::ProcessStatRequests(
+        root.at("stat_requests").AsArray(),
+        catalogue,
+        handler
+    );
+
+    json::Print(
+        json::Document{std::move(answers)},
+        std::cout
+    );
 }
