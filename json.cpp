@@ -266,38 +266,31 @@ void PrintNode(const Node& node, std::ostream& out) {
 
 }  // namespace
 
-Node::Node(std::nullptr_t) : value_(nullptr) {}
-Node::Node(Array value) : value_(std::move(value)) {}
-Node::Node(Dict value) : value_(std::move(value)) {}
-Node::Node(bool value) : value_(value) {}
-Node::Node(int value) : value_(value) {}
-Node::Node(double value) : value_(value) {}
-Node::Node(std::string value) : value_(std::move(value)) {}
-Node::Node(const char* value) : value_(std::string(value)) {}
-
-bool Node::IsInt() const { return std::holds_alternative<int>(value_); }
+bool Node::IsInt() const { return std::holds_alternative<int>(*this); }
 bool Node::IsDouble() const { return IsInt() || IsPureDouble(); }
-bool Node::IsPureDouble() const { return std::holds_alternative<double>(value_); }
-bool Node::IsBool() const { return std::holds_alternative<bool>(value_); }
-bool Node::IsString() const { return std::holds_alternative<std::string>(value_); }
-bool Node::IsNull() const { return std::holds_alternative<std::nullptr_t>(value_); }
-bool Node::IsArray() const { return std::holds_alternative<Array>(value_); }
-bool Node::IsMap() const { return std::holds_alternative<Dict>(value_); }
+bool Node::IsPureDouble() const { return std::holds_alternative<double>(*this); }
+bool Node::IsBool() const { return std::holds_alternative<bool>(*this); }
+bool Node::IsString() const { return std::holds_alternative<std::string>(*this); }
+bool Node::IsNull() const { return std::holds_alternative<std::nullptr_t>(*this); }
+bool Node::IsArray() const { return std::holds_alternative<Array>(*this); }
+bool Node::IsMap() const { return std::holds_alternative<Dict>(*this); }
 
-int Node::AsInt() const { return ExtractValue<int>(value_, "int"); }
-bool Node::AsBool() const { return ExtractValue<bool>(value_, "bool"); }
+int Node::AsInt() const { return ExtractValue<int>(*this, "int"); }
+bool Node::AsBool() const { return ExtractValue<bool>(*this, "bool"); }
 double Node::AsDouble() const {
-    if (const auto* value = std::get_if<double>(&value_)) return *value;
-    if (const auto* value = std::get_if<int>(&value_)) return static_cast<double>(*value);
+    if (const auto* value = std::get_if<double>(this)) return *value;
+    if (const auto* value = std::get_if<int>(this)) return static_cast<double>(*value);
     throw std::logic_error("Node does not contain a number");
 }
-const std::string& Node::AsString() const { return ExtractValue<std::string>(value_, "string"); }
-const Array& Node::AsArray() const { return ExtractValue<Array>(value_, "array"); }
-const Dict& Node::AsMap() const { return ExtractValue<Dict>(value_, "map"); }
+const std::string& Node::AsString() const { return ExtractValue<std::string>(*this, "string"); }
+const Array& Node::AsArray() const { return ExtractValue<Array>(*this, "array"); }
+const Dict& Node::AsMap() const { return ExtractValue<Dict>(*this, "map"); }
 
-const Node::Value& Node::GetValue() const noexcept { return value_; }
+const Node::Value& Node::GetValue() const noexcept { return *this; }
 
-bool operator==(const Node& lhs, const Node& rhs) { return lhs.value_ == rhs.value_; }
+bool operator==(const Node& lhs, const Node& rhs) {
+    return static_cast<const Node::Value&>(lhs) == static_cast<const Node::Value&>(rhs);
+}
 bool operator!=(const Node& lhs, const Node& rhs) { return !(lhs == rhs); }
 
 Document::Document(Node root) : root_(std::move(root)) {}
