@@ -1,5 +1,4 @@
 #include "json_reader.h"
-#include "json_builder.h"
 
 #include <algorithm>
 #include <optional>
@@ -141,7 +140,7 @@ json::Array json_reader::ProcessStatRequests(
         const int id = request.at("id").AsInt();
         const std::string& type = request.at("type").AsString();
 
-        json::Node answer;
+        json::Dict answer{{"request_id", id}};
 
         if (type == "Map") {
             if (!cached_map) {
@@ -149,54 +148,47 @@ json::Array json_reader::ProcessStatRequests(
                 handler.RenderMap().Render(svg_output);
                 cached_map = svg_output.str();
             }
-            answer = json::Builder{}
-                .StartDict()
-                    .Key("request_id").Value(id)
-                    .Key("map").Value(*cached_map)
-                .EndDict().Build();
+
+            answer["map"] = *cached_map;
         } else if (type == "Bus") {
-            const auto& name = request.at("name").AsString();
+            const std::string& name =
+                request.at("name").AsString();
             const auto stat = catalogue.GetBusInfo(name);
+
             if (stat) {
-                answer = json::Builder{}
-                    .StartDict()
-                        .Key("request_id").Value(id)
-                        .Key("curvature").Value(stat->curvature)
-                        .Key("route_length").Value(stat->route_length)
-                        .Key("stop_count").Value(static_cast<int>(stat->stops_count))
-                        .Key("unique_stop_count").Value(static_cast<int>(stat->unique_stops_count))
-                    .EndDict().Build();
+                answer["curvature"] = stat->curvature;
+                answer["route_length"] = stat->route_length;
+                answer["stop_count"] =
+                    static_cast<int>(stat->stops_count);
+                answer["unique_stop_count"] =
+                    static_cast<int>(stat->unique_stops_count);
             } else {
-                answer = json::Builder{}
-                    .StartDict()
-                        .Key("request_id").Value(id)
-                        .Key("error_message").Value(std::string("not found"))
-                    .EndDict().Build();
+                answer["error_message"] = "not found";
             }
         } else if (type == "Stop") {
-            const auto& name = request.at("name").AsString();
+            const std::string& name =
+                request.at("name").AsString();
+
             if (catalogue.FindStop(name)) {
-                const auto& buses = catalogue.GetBusesByStop(name);
-                std::vector<std::string_view> sort_buses(buses.begin(), buses.end());
+                const auto& buses =
+                    catalogue.GetBusesByStop(name);
+
+                std::vector<std::string_view> sort_buses(
+                    buses.begin(), buses.end()
+                );
                 std::sort(sort_buses.begin(), sort_buses.end());
+
                 json::Array bus_names;
                 for (std::string_view bus_name : sort_buses) {
-                    bus_names.emplace_back(std::string(bus_name));
+                    bus_names.emplace_back(
+                        std::string(bus_name)
+                    );
                 }
-                answer = json::Builder{}
-                    .StartDict()
-                        .Key("request_id").Value(id)
-                        .Key("buses").Value(std::move(bus_names))
-                    .EndDict().Build();
+
+                answer["buses"] = std::move(bus_names);
             } else {
-                answer = json::Builder{}
-                    .StartDict()
-                        .Key("request_id").Value(id)
-                        .Key("error_message").Value(std::string("not found"))
-                    .EndDict().Build();
+                answer["error_message"] = "not found";
             }
-        } else {
-            continue;
         }
 
         answers.emplace_back(std::move(answer));
