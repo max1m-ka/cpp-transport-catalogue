@@ -110,6 +110,96 @@ void AddLabel(
     document.Add(std::move(label));
 }
 
+void DrawRoutes(svg::Document& document, const std::vector<const transport_catalogue::Bus*>& visible_buses,  const SphereProjector& project, const RenderSettings& settings) {
+    for (std::size_t i = 0; i < visible_buses.size(); ++i) {
+        const auto* bus = visible_buses[i];
+        svg::Polyline line;
+
+        for (const auto* stop : bus->stops) {
+            line.AddPoint(project(stop->coordinates));
+        }
+
+        line.SetFillColor(svg::NoneColor)
+            .SetStrokeColor(
+                settings.color_palette[
+                    i % settings.color_palette.size()
+                ]
+            )
+            .SetStrokeWidth(settings.line_width)
+            .SetStrokeLineCap(svg::StrokeLineCap::ROUND)
+            .SetStrokeLineJoin(svg::StrokeLineJoin::ROUND);
+
+        document.Add(std::move(line));
+    }
+}
+
+void DrawBusLabels(svg::Document& document, const std::vector<const transport_catalogue::Bus*>& visible_buses,  const SphereProjector& project, const RenderSettings& settings) {
+    for (std::size_t i = 0; i < visible_buses.size(); ++i) {
+        const auto* bus = visible_buses[i];
+        const auto& color =
+            settings.color_palette[
+                i % settings.color_palette.size()
+            ];
+
+        const auto* first = bus->stops.front();
+
+        AddLabel(
+            document,
+            project(first->coordinates),
+            settings.bus_label_offset,
+            settings.bus_label_font_size,
+            bus->name,
+            true,
+            color,
+            settings
+        );
+
+        if (!bus->is_roundtrip) {
+            const auto* last =
+                bus->stops[bus->stops.size() / 2];
+
+            if (first != last) {
+                AddLabel(
+                    document,
+                    project(last->coordinates),
+                    settings.bus_label_offset,
+                    settings.bus_label_font_size,
+                    bus->name,
+                    true,
+                    color,
+                    settings
+                );
+            }
+        }
+    }
+}
+
+void DrawStopCircles(svg::Document& document, const std::map<std::string_view, const transport_catalogue::Stop*>& visible_stops,  const SphereProjector& project, const RenderSettings& settings) {
+    for (const auto& [name, stop] : visible_stops) {
+        svg::Circle circle;
+        circle.SetCenter(project(stop->coordinates))
+            .SetRadius(settings.stop_radius)
+            .SetFillColor("white");
+
+        document.Add(std::move(circle));
+    }
+}
+
+void DrawStopLabels(svg::Document& document, const std::map<std::string_view, const transport_catalogue::Stop*>& visible_stops,  const SphereProjector& project, const RenderSettings& settings) {
+    for (const auto& [name, stop] : visible_stops) {
+        AddLabel(
+            document,
+            project(stop->coordinates),
+            settings.stop_label_offset,
+            settings.stop_label_font_size,
+            name,
+            false,
+            "black",
+            settings
+        );
+    }
+}
+
 }
 
 MapRenderer::MapRenderer(RenderSettings settings)
@@ -156,90 +246,11 @@ svg::Document MapRenderer::RenderMap(
     );
 
     svg::Document document;
-
-    for (std::size_t i = 0; i < visible_buses.size(); ++i) {
-        const auto* bus = visible_buses[i];
-        svg::Polyline line;
-
-        for (const auto* stop : bus->stops) {
-            line.AddPoint(project(stop->coordinates));
-        }
-
-        line.SetFillColor(svg::NoneColor)
-            .SetStrokeColor(
-                settings_.color_palette[
-                    i % settings_.color_palette.size()
-                ]
-            )
-            .SetStrokeWidth(settings_.line_width)
-            .SetStrokeLineCap(svg::StrokeLineCap::ROUND)
-            .SetStrokeLineJoin(svg::StrokeLineJoin::ROUND);
-
-        document.Add(std::move(line));
-    }
-
-    for (std::size_t i = 0; i < visible_buses.size(); ++i) {
-        const auto* bus = visible_buses[i];
-        const auto& color =
-            settings_.color_palette[
-                i % settings_.color_palette.size()
-            ];
-
-        const auto* first = bus->stops.front();
-
-        AddLabel(
-            document,
-            project(first->coordinates),
-            settings_.bus_label_offset,
-            settings_.bus_label_font_size,
-            bus->name,
-            true,
-            color,
-            settings_
-        );
-
-        if (!bus->is_roundtrip) {
-            const auto* last =
-                bus->stops[bus->stops.size() / 2];
-
-            if (first != last) {
-                AddLabel(
-                    document,
-                    project(last->coordinates),
-                    settings_.bus_label_offset,
-                    settings_.bus_label_font_size,
-                    bus->name,
-                    true,
-                    color,
-                    settings_
-                );
-            }
-        }
-    }
-
-    for (const auto& [name, stop] : visible_stops) {
-        svg::Circle circle;
-        circle.SetCenter(project(stop->coordinates))
-            .SetRadius(settings_.stop_radius)
-            .SetFillColor("white");
-
-        document.Add(std::move(circle));
-    }
-
-    for (const auto& [name, stop] : visible_stops) {
-        AddLabel(
-            document,
-            project(stop->coordinates),
-            settings_.stop_label_offset,
-            settings_.stop_label_font_size,
-            name,
-            false,
-            "black",
-            settings_
-        );
-    }
-
+    DrawRoutes(document, visible_buses, project, settings_);
+    DrawBusLabels(document, visible_buses, project, settings_);
+    DrawStopCircles(document, visible_stops, project, settings_);
+    DrawStopLabels(document, visible_stops, project, settings_);
     return document;
 }
 
-}
+} // namespace renderer
