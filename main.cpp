@@ -9,7 +9,7 @@
 
 int main() {
     const json::Document input = json::Load(std::cin);
-    const json::Dict& root = input.GetRoot().AsMap();
+    const json::Dict& root = input.GetRoot().AsDict();
 
     transport_catalogue::TransportCatalogue catalogue;
 
@@ -20,7 +20,7 @@ int main() {
 
     renderer::MapRenderer map_renderer(
         json_reader::ParseRenderSettings(
-            root.at("render_settings").AsMap()
+            root.at("render_settings").AsDict()
         )
     );
 
