@@ -1,204 +1,113 @@
-#include "json_reader.h"
 #include "json_builder.h"
-
-#include <algorithm>
-#include <optional>
-#include <sstream>
-#include <string>
-#include <string_view>
+#include <stdexcept>
 #include <utility>
-#include <vector>
 
-namespace {
-
-svg::Color ParseColor(const json::Node& node) {
-    if (node.IsString()) {
-        return node.AsString();
+namespace json {
+void Builder::CheckCanAdd() const {
+    if (started_ && open_.empty()) {
+        throw std::logic_error("JSON is already complete");
     }
-
-    const json::Array& parts = node.AsArray();
-    std::ostringstream out;
-
-    out << (parts.size() == 3 ? "rgb(" : "rgba(")
-        << parts[0].AsInt() << ','
-        << parts[1].AsInt() << ','
-        << parts[2].AsInt();
-
-    if (parts.size() == 4) {
-        out << ',' << parts[3].AsDouble();
+    if (!open_.empty() && open_.back().node.IsDict() && !open_.back().pending_key) {
+        throw std::logic_error("Dictionary key is required");
     }
-
-    out << ')';
-    return out.str();
 }
 
-svg::Point ParsePoint(const json::Node& node) {
-    const auto& values = node.AsArray();
-    return {values[0].AsDouble(), values[1].AsDouble()};
-}
-
-}
-
-renderer::RenderSettings json_reader::ParseRenderSettings(
-    const json::Dict& settings
-) {
-    renderer::RenderSettings result;
-
-    result.width = settings.at("width").AsDouble();
-    result.height = settings.at("height").AsDouble();
-    result.padding = settings.at("padding").AsDouble();
-    result.line_width = settings.at("line_width").AsDouble();
-    result.stop_radius = settings.at("stop_radius").AsDouble();
-
-    result.bus_label_font_size =
-        settings.at("bus_label_font_size").AsInt();
-    result.bus_label_offset =
-        ParsePoint(settings.at("bus_label_offset"));
-
-    result.stop_label_font_size =
-        settings.at("stop_label_font_size").AsInt();
-    result.stop_label_offset =
-        ParsePoint(settings.at("stop_label_offset"));
-
-    result.underlayer_color =
-        ParseColor(settings.at("underlayer_color"));
-    result.underlayer_width =
-        settings.at("underlayer_width").AsDouble();
-
-    for (const json::Node& color :
-         settings.at("color_palette").AsArray()) {
-        result.color_palette.push_back(ParseColor(color));
-    }
-
-    return result;
-}
-
-void json_reader::LoadBaseRequests(
-    const json::Array& requests,
-    transport_catalogue::TransportCatalogue& catalogue
-) {
-    for (const json::Node& node : requests) {
-        const json::Dict& request = node.AsDict();
-
-        if (request.at("type").AsString() == "Stop") {
-            catalogue.AddStop(
-                request.at("name").AsString(),
-                {
-                    request.at("latitude").AsDouble(),
-                    request.at("longitude").AsDouble()
-                }
-            );
-        }
-    }
-
-    for (const json::Node& node : requests) {
-        const json::Dict& request = node.AsDict();
-
-        if (request.at("type").AsString() == "Stop") {
-            const auto* from =
-                catalogue.FindStop(request.at("name").AsString());
-
-            for (const auto& [to_name, distance] :
-                 request.at("road_distances").AsDict()) {
-                const auto* to = catalogue.FindStop(to_name);
-                catalogue.SetDistance(from, to, distance.AsInt());
-            }
-        }
-    }
-
-    for (const json::Node& node : requests) {
-        const json::Dict& request = node.AsDict();
-
-        if (request.at("type").AsString() == "Bus") {
-            std::vector<std::string_view> stop_names;
-
-            for (const json::Node& stop :
-                 request.at("stops").AsArray()) {
-                stop_names.push_back(stop.AsString());
-            }
-
-            catalogue.AddBus(
-                request.at("name").AsString(),
-                stop_names,
-                request.at("is_roundtrip").AsBool()
-            );
+void Builder::AddNode(Node node) {
+    CheckCanAdd();
+    if (open_.empty()) {
+        root_ = std::move(node);
+        started_ = true;
+    } else if (open_.back().node.IsArray()) {
+        auto& array = const_cast<Array&>(open_.back().node.AsArray());
+        array.push_back(std::move(node));
+    } else {
+        auto& dict = const_cast<Dict&>(open_.back().node.AsDict());
+        auto [it, inserted] = dict.emplace(std::move(*open_.back().pending_key), std::move(node));
+        open_.back().pending_key.reset();
+        if (!inserted) {
+            throw std::logic_error("Duplicate dictionary key");
         }
     }
 }
 
-json::Array json_reader::ProcessStatRequests(
-    const json::Array& requests,
-    const transport_catalogue::TransportCatalogue& catalogue,
-    const RequestHandler& handler
-) {
-    json::Array answers;
-    answers.reserve(requests.size());
-
-    std::optional<std::string> cached_map;
-
-    for (const json::Node& node : requests) {
-        const json::Dict& request = node.AsDict();
-        const int id = request.at("id").AsInt();
-        const std::string& type = request.at("type").AsString();
-
-        if (type == "Map") {
-            if (!cached_map) {
-                std::ostringstream svg_output;
-                handler.RenderMap().Render(svg_output);
-                cached_map = svg_output.str();
-            }
-            answers.emplace_back(json::Builder{}
-                .StartDict()
-                    .Key("request_id").Value(id)
-                    .Key("map").Value(*cached_map)
-                .EndDict().Build());
-        } else if (type == "Bus") {
-            const std::string& name = request.at("name").AsString();
-            const auto stat = catalogue.GetBusInfo(name);
-
-            if (stat) {
-                answers.emplace_back(json::Builder{}
-                    .StartDict()
-                        .Key("request_id").Value(id)
-                        .Key("curvature").Value(stat->curvature)
-                        .Key("route_length").Value(stat->route_length)
-                        .Key("stop_count").Value(static_cast<int>(stat->stops_count))
-                        .Key("unique_stop_count").Value(static_cast<int>(stat->unique_stops_count))
-                    .EndDict().Build());
-            } else {
-                answers.emplace_back(json::Builder{}
-                    .StartDict()
-                        .Key("request_id").Value(id)
-                        .Key("error_message").Value(std::string("not found"))
-                    .EndDict().Build());
-            }
-        } else if (type == "Stop") {
-            const std::string& name = request.at("name").AsString();
-            if (catalogue.FindStop(name)) {
-                const auto& buses = catalogue.GetBusesByStop(name);
-                std::vector<std::string_view> sort_buses(buses.begin(), buses.end());
-                std::sort(sort_buses.begin(), sort_buses.end());
-
-                json::Array bus_names;
-                bus_names.reserve(sort_buses.size());
-                for (std::string_view bus_name : sort_buses) {
-                    bus_names.emplace_back(std::string(bus_name));
-                }
-
-                answers.emplace_back(json::Builder{}
-                    .StartDict()
-                        .Key("request_id").Value(id)
-                        .Key("buses").Value(std::move(bus_names))
-                    .EndDict().Build());
-            } else {
-                answers.emplace_back(json::Builder{}
-                    .StartDict()
-                        .Key("request_id").Value(id)
-                        .Key("error_message").Value(std::string("not found"))
-                    .EndDict().Build());
-            }
-        }
+KeyContext Builder::Key(std::string key) {
+    if (open_.empty() || !open_.back().node.IsDict() || open_.back().pending_key) {
+        throw std::logic_error("Key is not allowed here");
     }
-
-    return answers;
+    open_.back().pending_key = std::move(key);
+    return KeyContext(*this);
 }
+
+Builder& Builder::Value(Node::Value value) {
+    AddNode(std::visit([](auto&& item) -> Node {
+        return Node(std::forward<decltype(item)>(item));
+    }, std::move(value)));
+    return *this;
+}
+
+DictContext Builder::StartDict() {
+    CheckCanAdd();
+    open_.push_back({Node(Dict{}), std::nullopt});
+    return DictContext(*this);
+}
+
+ArrayContext Builder::StartArray() {
+    CheckCanAdd();
+    open_.push_back({Node(Array{}), std::nullopt});
+    return ArrayContext(*this);
+}
+
+Builder& Builder::EndDict() {
+    if (open_.empty() || !open_.back().node.IsDict() || open_.back().pending_key) {
+        throw std::logic_error("No complete dictionary to close");
+    }
+    Node completed = std::move(open_.back().node);
+    open_.pop_back();
+    AddNode(std::move(completed));
+    return *this;
+}
+
+Builder& Builder::EndArray() {
+    if (open_.empty() || !open_.back().node.IsArray()) {
+        throw std::logic_error("No array to close");
+    }
+    Node completed = std::move(open_.back().node);
+    open_.pop_back();
+    AddNode(std::move(completed));
+    return *this;
+}
+
+Node Builder::Build() {
+    if (!started_ || !open_.empty()) {
+        throw std::logic_error("JSON is not complete");
+    }
+    return std::move(root_);
+}
+
+Builder::KeyContext Builder::BaseContext::Key(std::string key) {
+    return builder_.Key(std::move(key));
+}
+Builder& Builder::BaseContext::Value(Node::Value value) {
+    return builder_.Value(std::move(value));
+}
+Builder::DictContext Builder::BaseContext::StartDict() {
+    return builder_.StartDict();
+}
+Builder::ArrayContext Builder::BaseContext::StartArray() {
+    return builder_.StartArray();
+}
+Builder& Builder::BaseContext::EndDict() {
+    return builder_.EndDict();
+}
+Builder& Builder::BaseContext::EndArray() {
+    return builder_.EndArray();
+}
+Builder::DictContext Builder::KeyContext::Value(Node::Value value) {
+    BaseContext::Value(std::move(value));
+    return DictContext(builder_);
+}
+Builder::ArrayContext Builder::ArrayContext::Value(Node::Value value) {
+    BaseContext::Value(std::move(value));
+    return ArrayContext(builder_);
+}
+}  // namespace json
