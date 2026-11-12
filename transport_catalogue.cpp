@@ -45,6 +45,7 @@ void TransportCatalogue::AddBus(const string& name, const vector<string_view>& s
     buses_.push_back(std::move(bus));
 
     const Bus* bus_ptr = &buses_.back();
+    all_buses_.push_back(bus_ptr);
     busname_to_bus_[bus_ptr->name] = bus_ptr;
 
     for (const Stop* stop : bus_ptr->stops) {
@@ -104,31 +105,19 @@ std::optional<BusInfo> TransportCatalogue::GetBusInfo(string_view name) const {
     };
 }
 
-std::unordered_set<std::string_view>
+const std::unordered_set<std::string_view>&
 TransportCatalogue::GetBusesByStop(std::string_view stop_name) const {
+    static const std::unordered_set<std::string_view> empty;
     const Stop* stop = FindStop(stop_name);
-
     if (stop == nullptr) {
-        return {};
+        return empty;
     }
-
     const auto it = stop_to_buses_.find(stop);
-    if (it == stop_to_buses_.end()) {
-        return {};
-    }
-
-    return it->second;
+    return it == stop_to_buses_.end() ? empty : it->second;
 }
 
-std::vector<const Bus*> TransportCatalogue::GetAllBuses() const {
-    std::vector<const Bus*> result;
-    result.reserve(buses_.size());
-
-    for (const Bus& bus : buses_) {
-        result.push_back(&bus);
-    }
-
-    return result;
+const std::vector<const Bus*>& TransportCatalogue::GetAllBuses() const {
+    return all_buses_;
 }
 
 int TransportCatalogue::GetDistance(const Stop* from, const Stop* to) const {

@@ -84,19 +84,30 @@ Node Builder::Build() {
     return std::move(root_);
 }
 
-DictContext KeyContext::Value(Node::Value value) {
-    builder_.Value(std::move(value));
+Builder::KeyContext Builder::BaseContext::Key(std::string key) {
+    return builder_.Key(std::move(key));
+}
+Builder& Builder::BaseContext::Value(Node::Value value) {
+    return builder_.Value(std::move(value));
+}
+Builder::DictContext Builder::BaseContext::StartDict() {
+    return builder_.StartDict();
+}
+Builder::ArrayContext Builder::BaseContext::StartArray() {
+    return builder_.StartArray();
+}
+Builder& Builder::BaseContext::EndDict() {
+    return builder_.EndDict();
+}
+Builder& Builder::BaseContext::EndArray() {
+    return builder_.EndArray();
+}
+Builder::DictContext Builder::KeyContext::Value(Node::Value value) {
+    BaseContext::Value(std::move(value));
     return DictContext(builder_);
 }
-DictContext KeyContext::StartDict() { return builder_.StartDict(); }
-ArrayContext KeyContext::StartArray() { return builder_.StartArray(); }
-KeyContext DictContext::Key(std::string key) { return builder_.Key(std::move(key)); }
-Builder& DictContext::EndDict() { return builder_.EndDict(); }
-ArrayContext ArrayContext::Value(Node::Value value) {
-    builder_.Value(std::move(value));
-    return *this;
+Builder::ArrayContext Builder::ArrayContext::Value(Node::Value value) {
+    BaseContext::Value(std::move(value));
+    return ArrayContext(builder_);
 }
-DictContext ArrayContext::StartDict() { return builder_.StartDict(); }
-ArrayContext ArrayContext::StartArray() { return builder_.StartArray(); }
-Builder& ArrayContext::EndArray() { return builder_.EndArray(); }
-}
+}  // namespace json
