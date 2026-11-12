@@ -5,16 +5,15 @@
 #include <deque>
 #include <optional>
 #include <string>
-#include <utility>
 
 namespace json {
-class Builder;
-class KeyContext;
-class DictContext;
-class ArrayContext;
 
 class Builder {
 public:
+    class KeyContext;
+    class DictContext;
+    class ArrayContext;
+
     KeyContext Key(std::string key);
     Builder& Value(Node::Value value);
     DictContext StartDict();
@@ -22,9 +21,11 @@ public:
     Builder& EndDict();
     Builder& EndArray();
     Node Build();
+
 private:
     void AddNode(Node node);
     void CheckCanAdd() const;
+
     Node root_;
     bool started_ = false;
     struct Frame {
@@ -32,35 +33,51 @@ private:
         std::optional<std::string> pending_key;
     };
     std::deque<Frame> open_;
+
+public:
+    class BaseContext {
+    public:
+        explicit BaseContext(Builder& builder) : builder_(builder) {}
+        KeyContext Key(std::string key);
+        Builder& Value(Node::Value value);
+        DictContext StartDict();
+        ArrayContext StartArray();
+        Builder& EndDict();
+        Builder& EndArray();
+        Node Build() = delete;
+    protected:
+        Builder& builder_;
+    };
+
+    class KeyContext : public BaseContext {
+    public:
+        using BaseContext::BaseContext;
+        KeyContext Key(std::string) = delete;
+        DictContext Value(Node::Value value);
+        Builder& EndDict() = delete;
+        Builder& EndArray() = delete;
+    };
+
+    class DictContext : public BaseContext {
+    public:
+        using BaseContext::BaseContext;
+        Builder& Value(Node::Value) = delete;
+        ArrayContext StartArray() = delete;
+        DictContext StartDict() = delete;
+        Builder& EndArray() = delete;
+    };
+
+    class ArrayContext : public BaseContext {
+    public:
+        using BaseContext::BaseContext;
+        KeyContext Key(std::string) = delete;
+        ArrayContext Value(Node::Value value);
+        Builder& EndDict() = delete;
+    };
 };
 
-class KeyContext {
-public:
-    explicit KeyContext(Builder& builder) : builder_(builder) {}
-    DictContext StartDict();
-    ArrayContext StartArray();
-    DictContext Value(Node::Value value);
-private:
-    Builder& builder_;
-};
+using KeyContext = Builder::KeyContext;
+using DictContext = Builder::DictContext;
+using ArrayContext = Builder::ArrayContext;
 
-class DictContext {
-public:
-    explicit DictContext(Builder& builder) : builder_(builder) {}
-    KeyContext Key(std::string key);
-    Builder& EndDict();
-private:
-    Builder& builder_;
-};
-
-class ArrayContext {
-public:
-    explicit ArrayContext(Builder& builder) : builder_(builder) {}
-    ArrayContext Value(Node::Value value);
-    DictContext StartDict();
-    ArrayContext StartArray();
-    Builder& EndArray();
-private:
-    Builder& builder_;
-};
-}
+}  // namespace json
